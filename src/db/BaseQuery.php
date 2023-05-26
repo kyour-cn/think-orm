@@ -1345,8 +1345,7 @@ abstract class BaseQuery
      * @throws Exception
      * @throws ModelNotFoundException
      * @throws DataNotFoundException
-     *
-     * @return mixed
+     * @return array|$this|null
      */
     public function find($data = null)
     {
