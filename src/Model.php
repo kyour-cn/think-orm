@@ -110,6 +110,15 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
     protected $table;
 
     /**
+     * 设置实体模型对象.
+     *
+     * @var string|bool
+     */
+    protected $entityClass;
+
+    protected $entity;
+
+    /**
      * 初始化过的模型.
      *
      * @var array
@@ -273,6 +282,7 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
             }
         }
 
+        $this->parseEntity();
         // 执行初始化操作
         $this->initialize();
     }
@@ -302,6 +312,19 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
     }
 
     /**
+     * 解析模型实例名称.
+     *
+     * @return void
+     */
+    protected function parseEntity()
+    {
+        if (!$this->entityClass) {
+            $entity            = str_replace('\\model', '\\entity', static::class);
+            $this->entityClass = class_exists($entity) ? $entity: static::class;
+        }
+    }
+
+    /**
      * 创建新的模型实例.
      *
      * @param array $data    数据
@@ -310,9 +333,9 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      *
      * @return Model
      */
-    public function newInstance(array $data = [], $where = null, array $options = []): Model
+    public function newInstance(array $data = [], $where = null, array $options = [])
     {
-        $model = new static($data);
+        $model = new $this->entityClass($data, $this);
 
         if ($this->connection) {
             $model->setConnection($this->connection);
@@ -326,13 +349,35 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
             return $model;
         }
 
-        $model->exists(true);
-
-        $model->setUpdateWhere($where);
-
-        $model->trigger('AfterRead');
+        if (!$this->entity) {
+            $model->exists(true);
+            $model->setUpdateWhere($where);
+            $model->trigger('AfterRead');
+        }
 
         return $model;
+    }
+
+    /**
+     * 获取当前模型的实体模型实例.
+     *
+     * @return Entity
+     */
+    public function getEntity()
+    {
+        return $this->entity;
+    }
+
+    /**
+     * 设置实体模型实例.
+     *
+     * @param Entity $entity 实体模型实例
+     *
+     * @return void
+     */
+    public function setEntity($entity)
+    {
+        $this->entity = $entity;
     }
 
     /**
@@ -1048,7 +1093,11 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      */
     public function __set(string $name, $value): void
     {
-        $this->setAttr($name, $value);
+        if ($this->entity) {
+            $this->entity->$name = $value;
+        } else {
+            $this->setAttr($name, $value);
+        }
     }
 
     /**
@@ -1060,6 +1109,9 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      */
     public function __get(string $name)
     {
+        if ($this->entity) {
+            return $this->entity->$name;
+        }
         return $this->getAttr($name);
     }
 
@@ -1072,6 +1124,9 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      */
     public function __isset(string $name): bool
     {
+        if ($this->entity) {
+            return isset($this->entity->$name);
+        }
         return !is_null($this->getAttr($name));
     }
 
