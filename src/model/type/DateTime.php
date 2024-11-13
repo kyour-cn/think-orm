@@ -17,7 +17,7 @@ class DateTime implements Typeable
         return $static;
     }
 
-    public function data($data, bool $assoc = true)
+    public function data($time, $format)
     {
         $date = new \DateTime;
         $date->setTimestamp(is_numeric($time) ? (int) $time : strtotime($time));
@@ -28,4 +28,12 @@ class DateTime implements Typeable
     {
         return $this->data;
     }
+
+    /**
+     * @return string
+     */
+    public function __toString()
+    {
+        return $this->data;
+    }    
 }

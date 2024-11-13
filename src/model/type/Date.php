@@ -28,4 +28,12 @@ class Date implements Typeable
     {
         return $this->data;
     }
+
+    /**
+     * @return string
+     */
+    public function __toString()
+    {
+        return $this->data;
+    }    
 }

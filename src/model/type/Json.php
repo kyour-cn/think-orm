@@ -25,7 +25,7 @@ class Json implements Typeable
         $this->data = $data;
     }
 
-    public function getData()
+    public function value()
     {
         return $this->data;
     }
@@ -33,7 +33,7 @@ class Json implements Typeable
     /**
      * @return string
      */
-    public function value()
+    public function __toString()
     {
         return json_encode($this->data, JSON_UNESCAPED_UNICODE);
     }
