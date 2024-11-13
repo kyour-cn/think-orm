@@ -24,10 +24,12 @@ use think\contract\Arrayable;
 use think\contract\Jsonable;
 use think\db\Raw;
 use think\helper\Str;
+use think\model\contract\EnumTransform;
 use think\model\contract\FieldTypeTransform;
+use think\model\contract\Typeable;
 
 /**
- * Class Model.
+ * Class Entity.
  */
 abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsonable
 {
@@ -142,7 +144,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         $typeTransform = static function (string $type, $value, $model) {
             if (str_contains($type, '\\') && class_exists($type)) {
-                if (is_subclass_of($type, FieldTypeTransform::class)) {
+                if (is_subclass_of($type, Typeable::class)) {
+                    $value = $type::from($value);
+                } elseif (is_subclass_of($type, FieldTypeTransform::class)) {
                     $value = $type::get($value, $model);
                 } elseif (is_subclass_of($type, BackedEnum::class)) {
                     $value = $type::from($value);
@@ -186,7 +190,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         $typeTransform = static function (string $type, $value, $model) {
             if (str_contains($type, '\\') && class_exists($type)) {
-                if (is_subclass_of($type, FieldTypeTransform::class)) {
+                if (is_subclass_of($type, Typeable::class)) {
+                    $value = $value->value();
+                } elseif (is_subclass_of($type, FieldTypeTransform::class)) {
                     $value = $type::set($value, $model);
                 } elseif ($value instanceof BackedEnum) {
                     $value = $value->value;
@@ -573,6 +579,10 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         foreach ($data as $name => &$item) {
             if ($item instanceof Entity) {
                 $item = $item->toarray();
+            } elseif ($item instanceof Typeable) {
+                $item = $item->value();
+            } elseif (is_subclass_of($item, EnumTransform::class)) {
+                $item = $item->value();
             }
         }
         return $data;
