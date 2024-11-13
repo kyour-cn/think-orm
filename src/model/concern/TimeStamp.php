@@ -9,7 +9,7 @@
 // +----------------------------------------------------------------------
 // | Author: liu21st <liu21st@gmail.com>
 // +----------------------------------------------------------------------
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace think\model\concern;
 
@@ -62,6 +62,11 @@ trait TimeStamp
         $this->autoWriteTimestamp = $this->checkTimeFieldType($auto);
 
         return $this;
+    }
+
+    public function getDateTimeFields(bool $update = false)
+    {
+        return $update ? $this->updateTime : [$this->createTime, $this->updateTime];
     }
 
     /**

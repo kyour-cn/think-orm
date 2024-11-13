@@ -170,9 +170,9 @@ class Collection extends BaseCollection
      *
      * @return $this
      */
-    public function setParent(Model $parent)
+    public function setParent($parent)
     {
-        $this->each(function (Model $model) use ($parent) {
+        $this->each(function ($model) use ($parent) {
             $model->setParent($parent);
         });
 

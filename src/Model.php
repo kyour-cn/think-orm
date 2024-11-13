@@ -287,6 +287,11 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
         $this->initialize();
     }
 
+    public function getOption(string $name)
+    {
+        return property_exists($this, $name) ? $this->$name : null;
+    }
+
     /**
      * 获取当前模型名称.
      *
@@ -737,7 +742,7 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
         $this->checkData();
 
         // 获取有更新的数据
-        $data = $this->getChangedData();
+        $data = $this->getChangedData($this->data);
 
         if (empty($data)) {
             // 关联更新

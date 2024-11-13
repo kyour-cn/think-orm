@@ -4,16 +4,17 @@ declare (strict_types = 1);
 
 namespace think\model\type;
 
+use think\Entity;
 use think\model\contract\Typeable;
 
 class Json implements Typeable
 {
     protected $data;
 
-    public static function from(mixed $value, $assoc = true)
+    public static function from(mixed $value, Entity $model)
     {
         $static = new static();
-        $static->data($value, $assoc);
+        $static->data($value, $model->isJsonAssoc());
         return $static;
     }
 

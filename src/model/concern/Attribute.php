@@ -156,6 +156,13 @@ trait Attribute
     protected $insert = [];
 
     /**
+     * 主键值.
+     *
+     * @var int|string
+     */
+    protected $key;
+
+    /**
      * 获取模型对象的主键.
      *
      * @return string|array
@@ -165,6 +172,11 @@ trait Attribute
         return $this->pk;
     }
 
+    public function isJsonAssoc(): bool
+    {
+        return $this->jsonAssoc;
+    }
+    
     /**
      * 判断一个字段名是否为主键字段.
      *
@@ -185,6 +197,14 @@ trait Attribute
         return false;
     }
 
+    public function setKey($value)
+    {
+        $pk = $this->getPk();
+        if (is_string($pk)) {
+            $this->key = $value;
+        }
+    }
+
     /**
      * 获取模型对象的主键值
      *
@@ -192,9 +212,14 @@ trait Attribute
      */
     public function getKey()
     {
+        if ($this->key) {
+            return $this->key;
+        }
+
         $pk = $this->getPk();
 
         if (is_string($pk) && array_key_exists($pk, $this->data)) {
+            $this->key = $this->data[$pk];
             return $this->data[$pk];
         }
     }
@@ -234,7 +259,7 @@ trait Attribute
      *
      * @return string
      */
-    protected function getRealFieldName(string $name): string
+    public function getRealFieldName(string $name): string
     {
         if ($this->convertNameToCamel || !$this->strict) {
             return Str::snake($name);
@@ -334,6 +359,12 @@ trait Attribute
         return array_key_exists($fieldName, $this->origin) ? $this->origin[$fieldName] : null;
     }
 
+    public function origin(array $origin)
+    {
+        $this->origin = $origin;
+        return $this;
+    }
+
     /**
      * 获取当前对象数据 如果不存在指定字段返回false.
      *
@@ -367,9 +398,9 @@ trait Attribute
      *
      * @return array
      */
-    public function getChangedData(): array
+    public function getChangedData(array $data = []): array
     {
-        $data = $this->force ? $this->data : array_udiff_assoc($this->data, $this->origin, function ($a, $b) {
+        $data = $this->force ? $data : array_udiff_assoc($data, $this->origin, function ($a, $b) {
             if ((empty($a) || empty($b)) && $a !== $b) {
                 return 1;
             }
@@ -536,9 +567,9 @@ trait Attribute
             $relation = false;
             if (isset($this->mapping[$name])) {
                 // 检查字段映射
-                $name  = $this->mapping[$name];
+                $name = $this->mapping[$name];
             }
-            $value    = $this->getData($name);
+            $value = $this->getData($name);
         } catch (InvalidArgumentException $e) {
             $relation = $this->isRelationAttr($name);
             $value    = null;

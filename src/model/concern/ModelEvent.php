@@ -76,7 +76,7 @@ trait ModelEvent
      *
      * @return bool
      */
-    protected function trigger(string $event): bool
+    public function trigger(string $event): bool
     {
         if (!$this->withEvent) {
             return true;

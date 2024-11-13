@@ -4,16 +4,17 @@ declare (strict_types = 1);
 
 namespace think\model\type;
 
+use think\Entity;
 use think\model\contract\Typeable;
 
 class DateTime implements Typeable
 {
     protected $data;
 
-    public static function from(mixed $value, $format = 'Y-m-d H:i:s.u')
+    public static function from(mixed $value, Entity $model)
     {
         $static = new static();
-        $static->data($value, $format);
+        $static->data($value, $model->getDateFormat());
         return $static;
     }
 
@@ -35,5 +36,5 @@ class DateTime implements Typeable
     public function __toString()
     {
         return $this->data;
-    }    
+    }
 }
