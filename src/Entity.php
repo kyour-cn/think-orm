@@ -13,11 +13,15 @@ declare (strict_types = 1);
 
 namespace think;
 
+use ArrayAccess;
 use BackedEnum;
+use JsonSerializable;
 use ReflectionClass;
 use ReflectionProperty;
 use Stringable;
 use think\Collection;
+use think\contract\Arrayable;
+use think\contract\Jsonable;
 use think\db\Raw;
 use think\helper\Str;
 use think\model\contract\FieldTypeTransform;
@@ -25,7 +29,7 @@ use think\model\contract\FieldTypeTransform;
 /**
  * Class Model.
  */
-abstract class Entity
+abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsonable
 {
     use model\concern\ModelEvent;
     use model\concern\AutoWriteId;
@@ -153,12 +157,12 @@ abstract class Entity
 
         return match ($type) {
             'string' => (string) $value,
-            'int' => (int) $value,
-            'float' => (float) $value,
-            'bool' => (bool) $value,
-            'array' => empty($value) ? [] : json_decode($value, true),
+            'int'    => (int) $value,
+            'float'  => (float) $value,
+            'bool'   => (bool) $value,
+            'array'  => empty($value) ? [] : json_decode($value, true),
             'object' => empty($value) ? new \stdClass() : json_decode($value),
-            default => $typeTransform($type, $value, $this),
+            default  => $typeTransform($type, $value, $this),
         };
     }
 
@@ -196,12 +200,12 @@ abstract class Entity
 
         return match ($type) {
             'string' => (string) $value,
-            'int' => (int) $value,
-            'float' => (float) $value,
-            'bool' => (bool) $value,
+            'int'    => (int) $value,
+            'float'  => (float) $value,
+            'bool'   => (bool) $value,
             'object' => is_object($value) ? json_encode($value, JSON_FORCE_OBJECT) : $value,
-            'array' => json_encode((array) $value, JSON_UNESCAPED_UNICODE),
-            default => $typeTransform($type, $value, $this),
+            'array'  => json_encode((array) $value, JSON_UNESCAPED_UNICODE),
+            default  => $typeTransform($type, $value, $this),
         };
     }
 
@@ -563,7 +567,7 @@ abstract class Entity
      *
      * @return array
      */
-    public function toArray()
+    public function toArray(): array
     {
         $data = $this->getdata();
         foreach ($data as $name => &$item) {
@@ -583,6 +587,38 @@ abstract class Entity
     public function tojson(int $options = JSON_UNESCAPED_UNICODE): string
     {
         return json_encode($this->toarray(), $options);
+    }
+
+    public function __toString()
+    {
+        return $this->toJson();
+    }
+
+    // JsonSerializable
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
+    }
+
+    // ArrayAccess
+    public function offsetSet(mixed $name, mixed $value): void
+    {
+        $this->setAttr($name, $value);
+    }
+
+    public function offsetExists(mixed $name): bool
+    {
+        return $this->__isset($name);
+    }
+
+    public function offsetUnset(mixed $name): void
+    {
+        $this->__unset($name);
+    }
+
+    public function offsetGet(mixed $name): mixed
+    {
+        return $this->getAttr($name);
     }
 
     /**
@@ -672,6 +708,21 @@ abstract class Entity
         $name   = $this->getRealFieldName($name);
         $fields = $this->getFields();
         return in_array($name, $fields) && isset($this->$name);
+    }
+
+    /**
+     * 销毁数据对象的值
+     *
+     * @param string $name 名称
+     *
+     * @return void
+     */
+    public function __unset(string $name): void
+    {
+        unset(
+            $this->data[$name],
+            $this->$name
+        );
     }
 
     public function __debugInfo()
