@@ -22,6 +22,7 @@ use Stringable;
 use think\contract\Arrayable;
 use think\contract\Jsonable;
 use think\db\Raw;
+use think\helper\Str;
 use think\model\Collection;
 use think\model\contract\EnumTransform;
 use think\model\contract\FieldTypeTransform;
@@ -266,8 +267,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             } elseif ($val instanceof Collection) {
                 unset($data[$name]);
             } elseif (!$isUpdate || $val !== $this->origin[$name]) {
-                // 对写入数据进行处理
+                // 类型转换
                 $val = $this->writeTransform($val, $this->getFields($name));
+                // 修改器
+                if ($method = 'set' . Str::studly($name) . 'Attr' && method_exists($this, $method)) {
+                    $val = $this->$method($val, $data);
+                }
             } else {
                 unset($data[$name]);
             }
@@ -506,6 +511,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 $item = $item->value();
             } elseif (is_subclass_of($item, EnumTransform::class)) {
                 $item = $item->value();
+            } elseif ($method = 'get' . Str::studly($name) . 'Attr' && method_exists($this, $method)) {
+                // 使用获取器转换输出
+                $item = $this->$method($item, $data);
             }
         }
         return $data;
@@ -519,6 +527,23 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     public function isEmpty(): bool
     {
         return empty($this->getData());
+    }
+
+    /**
+     * 获取器 获取数据对象的值
+     *
+     * @param string $name 名称
+     *
+     * @return mixed
+     */
+    public function get(string $name)
+    {
+        $name  = $this->_model->getRealFieldName($name);
+        $value = $this->$name ?? null;
+        if ($method = 'get' . Str::studly($name) . 'Attr' && method_exists($this, $method)) {
+            $value = $this->$method($value, $this->getData());
+        }
+        return $value;
     }
 
     /**
