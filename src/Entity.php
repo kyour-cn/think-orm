@@ -32,7 +32,8 @@ use think\model\contract\Typeable;
  */
 abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsonable
 {
-    private Model $modelInstance;
+    private Model $_model;
+    private array $_origin = [];
 
     /**
      * 架构函数.
@@ -47,34 +48,45 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         // 获取对应模型对象
         if (is_null($model)) {
-            $class               = $this->parseModel();
-            $this->modelInstance = new $class;
+            $class        = $this->parseModel();
+            $this->_model = new $class;
         } else {
-            $this->modelInstance = $model;
+            $this->_model = $model;
         }
 
-        $this->modelInstance->setEntity($this);
+        $this->_model->setEntity($this);
+        $this->_model->exists(true);
 
+        $this->initializeData($data);
+    }
+
+    /**
+     * 数据读取 类型转换.
+     *
+     * @param array|object $data 实体模型数据
+     *
+     * @return void
+     */
+    protected function initializeData(array | object $data)
+    {
         // 获取字段列表
         $schema = $this->getFields();
         $fields = array_keys($schema);
 
         // 实体模型赋值
         foreach ($data as $name => $val) {
-            $trueName = $this->modelInstance->getRealFieldName($name);
+            $trueName = $this->_model->getRealFieldName($name);
             if (in_array($trueName, $fields)) {
-                $value             = $this->readTransform($val, $schema[$trueName] ?? 'string');
-                $this->$trueName   = $value;
-                $origin[$trueName] = $value;
+                $value                   = $this->readTransform($val, $schema[$trueName] ?? 'string');
+                $this->$trueName         = $value;
+                $this->origin[$trueName] = $value;
             }
 
-            if ($this->modelInstance->getPk() == $trueName) {
+            if ($this->_model->getPk() == $trueName) {
                 // 记录主键值
-                $this->modelInstance->setKey($val);
+                $this->_model->setKey($val);
             }
         }
-
-        $this->modelInstance->origin($origin);
     }
 
     /**
@@ -181,7 +193,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function model(): Model
     {
-        return $this->modelInstance;
+        return $this->_model;
     }
 
     /**
@@ -194,8 +206,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         $class     = new ReflectionClass($this);
         $propertys = $class->getProperties(ReflectionProperty::IS_PUBLIC);
         $schema    = [];
+
         foreach ($propertys as $property) {
-            $name          = $this->modelInstance->getRealFieldName($property->getName());
+            $name          = $this->_model->getRealFieldName($property->getName());
             $type          = $property->hasType() ? $property->getType()->getName() : 'string';
             $schema[$name] = $type;
         }
@@ -233,11 +246,18 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function save(array | object $data = []): bool
     {
-        $data = !empty($data) ? $this->parseData($data) : $this->getData($this);
+        if (!empty($data)) {
+            $data = $this->parseData($data);
+            $this->initializeData($data);
+        } else {
+            $data = $this->getData($this);
+        }
 
-        if (empty($data) || false === $this->modelInstance->trigger('BeforeWrite')) {
+        if (empty($data) || false === $this->_model->trigger('BeforeWrite')) {
             return false;
         }
+
+        $isUpdate = $this->_model->getKey();
 
         foreach ($data as $name => &$val) {
             if ($val instanceof Entity) {
@@ -245,28 +265,27 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 unset($data[$name]);
             } elseif ($val instanceof Collection) {
                 unset($data[$name]);
-            } else {
+            } elseif (!$isUpdate || $val !== $this->origin[$name]) {
+                // 对写入数据进行处理
                 $val = $this->writeTransform($val, $this->getFields($name));
+            } else {
+                unset($data[$name]);
             }
         }
 
-        $result = $this->modelInstance->getKey() ?
-        $this->updateData($model, $data) :
-        $this->insertData($model, $data);
+        $result = $isUpdate ? $this->updateData($data) : $this->insertData($data);
 
         if (false === $result) {
             return false;
         }
 
         // 写入回调
-        $this->modelInstance->trigger('AfterWrite');
+        $this->_model->trigger('AfterWrite');
 
         // 保存关联数据
         if (!empty($relations)) {
             $this->relationSave($relations);
         }
-
-        $this->modelInstance->origin($this->getData());
 
         return true;
 
@@ -275,25 +294,25 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     /**
      * 新增数据.
      *
-     * @param array|object $data 数据
+     * @param array $data 数据
      * @return bool
      */
     protected function insertData(array $data): bool
     {
         // 主键自动写入
-        if ($this->modelInstance->isAutoWriteId()) {
-            $pk = $this->modelInstance->getPk();
+        if ($this->_model->isAutoWriteId()) {
+            $pk = $this->_model->getPk();
             if (is_string($pk) && !isset($data[$pk])) {
-                $data[$pk] = $this->modelInstance->autoWriteId();
+                $data[$pk] = $this->_model->autoWriteId();
             }
         }
 
-        if (empty($data) || false === $this->modelInstance->trigger('BeforeInsert')) {
+        if (empty($data) || false === $this->_model->trigger('BeforeInsert')) {
             return false;
         }
 
         // 时间字段自动写入
-        foreach ($this->modelInstance->getDateTimeFields() as $field) {
+        foreach ($this->_model->getDateTimeFields() as $field) {
             if (is_string($field)) {
                 $type = $this->getFields($field);
                 if (is_subclass_of($type, Typeable::class)) {
@@ -303,29 +322,28 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             }
         }
 
-        $result = $this->modelInstance->db()->insert($data, true);
+        $fields = array_keys($this->getFields());
+        $result = $this->_model->db()->field($fields)->insert($data, true);
 
-        $this->modelInstance->setKey($result);
-        $this->modelInstance->trigger('AfterInsert');
+        $this->setKey($result);
+        $this->_model->trigger('AfterInsert');
         return true;
     }
 
     /**
      * 更新数据.
      *
-     * @param array|object $data 数据
+     * @param array $data 数据
      * @return bool
      */
     protected function updateData(array $data): bool
     {
-        $data = $this->modelInstance->getChangedData($data);
-
-        if (empty($data) || false === $this->modelInstance->trigger('BeforeUpdate')) {
+        if (empty($data) || false === $this->_model->trigger('BeforeUpdate')) {
             return false;
         }
 
         // 时间字段自动更新
-        $field = $this->modelInstance->getDateTimeFields(true);
+        $field = $this->_model->getDateTimeFields(true);
         if (is_string($field)) {
             $type = $this->getFields($field);
             if (is_subclass_of($type, Typeable::class)) {
@@ -334,12 +352,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             }
         }
 
-        $this->modelInstance->db(null)
-            ->where($this->modelInstance->getPk(), $this->modelInstance->getKey())
+        $this->_model->db(null)
+            ->where($this->_model->getPk(), $this->_model->getKey())
             ->update($data);
 
         // 更新回调
-        $this->modelInstance->trigger('AfterUpdate');
+        $this->_model->trigger('AfterUpdate');
         return true;
     }
 
@@ -354,7 +372,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         foreach ($relations as $name => $relation) {
             $relationKey = $this->getRelationKey($name);
             if ($relationKey && property_exists($relation, $relationKey)) {
-                $relation->$relationKey = $this->modelInstance->getKey();
+                $relation->$relationKey = $this->_model->getKey();
             }
             $relation->save();
         }
@@ -378,18 +396,35 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function delete(): bool
     {
-        if (!$this->modelInstance->getKey() || false === $this->modelInstance->trigger('BeforeDelete')) {
+        if (!$this->_model->getKey() || false === $this->_model->trigger('BeforeDelete')) {
             return false;
         }
 
-        $result = $this->modelInstance
-            ->where($this->modelInstance->getPk(), $this->modelInstance->getKey())
+        $result = $this->_model
+            ->where($this->_model->getPk(), $this->_model->getKey())
             ->delete();
+
         if ($result) {
-            $this->modelInstance->trigger('AfterDelete');
+            $this->_model->trigger('AfterDelete');
         }
 
         return true;
+    }
+
+    /**
+     * 写入数据.
+     *
+     * @param array|object  $data 数据
+     *
+     * @return static
+     */
+    public static function create(array | object $data): Entity
+    {
+        $model = new static();
+
+        $model->save($data);
+
+        return $model;
     }
 
     /**
@@ -433,8 +468,8 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     protected function setKey($value)
     {
-        $this->modelInstance->setKey($value);
-        $pk = $this->modelInstance->getPk();
+        $this->_model->setKey($value);
+        $pk = $this->_model->getPk();
         if (is_string($pk)) {
             $this->$pk = $value;
         }
@@ -447,13 +482,13 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     protected function getData(): array
     {
-        $me = new class {
+        $class = new class {
             function getPublicVars($object)
             {
                 return get_object_vars($object);
             }
         };
-        return $me->getPublicVars($this);
+        return $class->getPublicVars($this);
     }
 
     /**
@@ -474,6 +509,16 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             }
         }
         return $data;
+    }
+
+    /**
+     * 判断数据是否为空.
+     *
+     * @return bool
+     */
+    public function isEmpty(): bool
+    {
+        return empty($this->getData());
     }
 
     /**
@@ -519,11 +564,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         return $this->$name ?? null;
     }
 
-    public function __debugInfo()
-    {
-        return $this->getdata();
-    }
-
     public static function __callStatic($method, $args)
     {
         $model = new static();
@@ -533,6 +573,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
     public function __call($method, $args)
     {
-        return call_user_func_array([$this->modelInstance, $method], $args);
+        return call_user_func_array([$this->_model, $method], $args);
     }
 }

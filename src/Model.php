@@ -612,6 +612,9 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      */
     public function isEmpty(): bool
     {
+        if ($this->entity) {
+            return $this->entity->isEmpty();
+        }
         return empty($this->data);
     }
 
@@ -895,7 +898,9 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
     {
         $pk = $this->getPk();
 
-        if (is_string($pk) && isset($this->origin[$pk])) {
+        if ($this->key) {
+            $where = [[$pk, '=', $this->key]];
+        } elseif (is_string($pk) && isset($this->origin[$pk])) {
             $where     = [[$pk, '=', $this->origin[$pk]]];
             $this->key = $this->origin[$pk];
         } elseif (is_array($pk)) {

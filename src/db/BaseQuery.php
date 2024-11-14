@@ -277,14 +277,14 @@ abstract class BaseQuery
 
     /**
      * 得到当前或者指定名称的数据表.
-     * @param bool $alias 是否返回数据表别名 
+     * @param bool $alias 是否返回数据表别名
      *
      * @return string|array|Raw
      */
     public function getTable(bool $alias = false)
     {
         if (isset($this->options['table'])) {
-            $table =  $this->options['table'];
+            $table = $this->options['table'];
             if ($alias && is_string($table) && !empty($this->options['alias'][$table])) {
                 return $this->options['alias'][$table];
             }
@@ -1560,7 +1560,10 @@ abstract class BaseQuery
         $pk       = $this->getPk();
         $isUpdate = false;
         // 如果存在主键数据 则自动作为更新条件
-        if (is_string($pk) && isset($data[$pk])) {
+        if (!empty($this->options['key'])) {
+            $this->where($pk, '=', $this->options['key']);
+            $isUpdate = true;
+        } elseif (is_string($pk) && isset($data[$pk])) {
             $this->where($pk, '=', $data[$pk]);
             $this->options['key'] = $data[$pk];
             unset($data[$pk]);

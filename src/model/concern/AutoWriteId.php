@@ -54,7 +54,7 @@ trait AutoWriteId
      *
      * @return mixed
      */
-    protected function autoWriteId()
+    public function autoWriteId()
     {
         $build = $this->autoWriteId;
 
