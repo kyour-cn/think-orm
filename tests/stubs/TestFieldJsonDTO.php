@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace tests\stubs;
 
-use think\Model;
 use think\model\contract\FieldTypeTransform;
 
 class TestFieldJsonDTO implements FieldTypeTransform, \JsonSerializable
@@ -36,7 +35,7 @@ class TestFieldJsonDTO implements FieldTypeTransform, \JsonSerializable
         return json_encode($this);
     }
 
-    public static function get(mixed $value, Model $model): ?static
+    public static function get(mixed $value, $model): ?static
     {
         return static::fromData($value);
     }

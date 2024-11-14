@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace tests\stubs;
 
-use think\Model;
 use think\model\contract\FieldTypeTransform;
 
 class TestFieldPhpDTO implements FieldTypeTransform
@@ -49,7 +48,7 @@ class TestFieldPhpDTO implements FieldTypeTransform
         return serialize($this);
     }
 
-    public static function get(mixed $value, Model $model): ?static
+    public static function get(mixed $value, $model): ?static
     {
         $d = static::fromData($value);
         if (empty($d)) {
