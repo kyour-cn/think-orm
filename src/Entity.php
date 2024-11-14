@@ -35,6 +35,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 {
     private Model $_model;
     private array $_origin = [];
+    private array $_get    = [];
 
     /**
      * 架构函数.
@@ -78,9 +79,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         foreach ($data as $name => $val) {
             $trueName = $this->_model->getRealFieldName($name);
             if (in_array($trueName, $fields)) {
-                $value                   = $this->readTransform($val, $schema[$trueName] ?? 'string');
-                $this->$trueName         = $value;
-                $this->origin[$trueName] = $value;
+                // 读取数据后进行类型转换
+                $value = $this->readTransform($val, $schema[$trueName] ?? 'string');
+
+                $this->$trueName          = $value;
+                $this->_origin[$trueName] = $value;
             }
 
             if ($this->_model->getPk() == $trueName) {
@@ -266,11 +269,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 unset($data[$name]);
             } elseif ($val instanceof Collection) {
                 unset($data[$name]);
-            } elseif (!$isUpdate || $val !== $this->origin[$name]) {
+            } elseif (!$isUpdate || $val !== $this->_origin[$name]) {
                 // 类型转换
-                $val = $this->writeTransform($val, $this->getFields($name));
+                $val    = $this->writeTransform($val, $this->getFields($name));
+                $method = 'set' . Str::studly($name) . 'Attr';
                 // 修改器
-                if ($method = 'set' . Str::studly($name) . 'Attr' && method_exists($this, $method)) {
+                if (method_exists($this, $method)) {
                     $val = $this->$method($val, $data);
                 }
             } else {
@@ -499,21 +503,42 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     /**
      * 模型数据转数组.
      *
+     * @param array $allow 允许输出字段
      * @return array
      */
-    public function toArray(): array
+    public function toArray(array $allow = []): array
     {
         $data = $this->getdata();
         foreach ($data as $name => &$item) {
-            if ($item instanceof Entity || $item instanceof Collection) {
+            if (!empty($allow) && !in_array($name, $allow)) {
+                unset($data[$name]);
+            } elseif ($item instanceof Entity || $item instanceof Collection) {
                 $item = $item->toarray();
             } elseif ($item instanceof Typeable) {
                 $item = $item->value();
             } elseif (is_subclass_of($item, EnumTransform::class)) {
                 $item = $item->value();
-            } elseif ($method = 'get' . Str::studly($name) . 'Attr' && method_exists($this, $method)) {
-                // 使用获取器转换输出
-                $item = $this->$method($item, $data);
+            } elseif (isset($this->_get[$name])) {
+                $item = $this->_get[$name];
+            } else {
+                $method = 'get' . Str::studly($name) . 'Attr';
+                if (method_exists($this, $method)) {
+                    // 使用获取器转换输出
+                    $item = $this->$method($item, $data);
+
+                    $this->_get[$name] = $item;
+                }
+            }
+        }
+
+        // 输出额外属性
+        foreach ($this->_get as $name => $val) {
+            if (!empty($allow) && !in_array($name, $allow)) {
+                continue;
+            }
+
+            if (!array_key_exists($name, $data)) {
+                $data[$name] = $val;
             }
         }
         return $data;
@@ -538,11 +563,18 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function get(string $name)
     {
-        $name  = $this->_model->getRealFieldName($name);
-        $value = $this->$name ?? null;
-        if ($method = 'get' . Str::studly($name) . 'Attr' && method_exists($this, $method)) {
+        $name = $this->_model->getRealFieldName($name);
+        if (array_key_exists($name, $this->_get)) {
+            return $this->_get[$name];
+        }
+
+        $value  = $this->$name ?? null;
+        $method = 'get' . Str::studly($name) . 'Attr';
+        if (method_exists($this, $method)) {
             $value = $this->$method($value, $this->getData());
         }
+
+        $this->_get[$name] = $value;
         return $value;
     }
 
@@ -550,11 +582,64 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      * 模型数据转Json.
      *
      * @param int $options json参数
+     * @param array $allow 允许输出字段
      * @return string
      */
-    public function tojson(int $options = JSON_UNESCAPED_UNICODE): string
+    public function tojson(int $options = JSON_UNESCAPED_UNICODE, array $allow = []): string
     {
-        return json_encode($this->toarray(), $options);
+        return json_encode($this->toarray($allow), $options);
+    }
+
+    /**
+     * 获取额外属性
+     *
+     * @param string $name 名称
+     *
+     * @return mixed
+     */
+    public function __get(string $name)
+    {
+        return $this->get($name);
+    }
+
+    /**
+     * 设置额外数据
+     *
+     * @param string $name  名称
+     * @param mixed  $value 值
+     *
+     * @return void
+     */
+    public function __set(string $name, $value): void
+    {
+        $name              = $this->_model->getRealFieldName($name);
+        $this->_get[$name] = $value;
+    }
+
+    /**
+     * 检测数据对象的值
+     *
+     * @param string $name 名称
+     *
+     * @return bool
+     */
+    public function __isset(string $name): bool
+    {
+        $name = $this->_model->getRealFieldName($name);
+        return isset($this->$name) || isset($this->_get[$name]);
+    }
+
+    /**
+     * 销毁数据对象的值
+     *
+     * @param string $name 名称
+     *
+     * @return void
+     */
+    public function __unset(string $name): void
+    {
+        $name = $this->_model->getRealFieldName($name);
+        unset($this->_get[$name]);
     }
 
     public function __toString()
