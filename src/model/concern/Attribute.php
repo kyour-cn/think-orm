@@ -177,6 +177,11 @@ trait Attribute
         return $this->jsonAssoc;
     }
     
+    public function getType()
+    {
+        return $this->type;
+    }
+    
     /**
      * 判断一个字段名是否为主键字段.
      *

@@ -34,8 +34,11 @@ use think\model\contract\Typeable;
 abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsonable
 {
     private Model $_model;
+    private bool $_define  = true;
     private array $_origin = [];
     private array $_get    = [];
+    private array $_schema = [];
+    private array $_data   = [];
 
     /**
      * 架构函数.
@@ -90,6 +93,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 // 记录主键值
                 $this->_model->setKey($val);
             }
+        }
+
+        if ($this->_define) {
+            // 非属性定义模式下 采用动态属性
+            $this->_data = $this->_origin;
         }
     }
 
@@ -207,6 +215,10 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     protected function getFields(?string $field = null)
     {
+        if (!empty($this->_schema)) {
+            return $field ? ($this->_schema[$field] ?? 'string') : $this->_schema;
+        }
+
         $class     = new ReflectionClass($this);
         $propertys = $class->getProperties(ReflectionProperty::IS_PUBLIC);
         $schema    = [];
@@ -216,6 +228,16 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             $type          = $property->hasType() ? $property->getType()->getName() : 'string';
             $schema[$name] = $type;
         }
+
+        if (empty($schema)) {
+            $this->_define = false;
+            // 获取数据表信息
+            $schema = $this->_model->getFieldsType($this->_model->getTable());
+            $type   = $this->_model->getType();
+            $schema = array_merge($schema, $type);
+        }
+
+        $this->_schema = $schema;
 
         if ($field) {
             return $schema[$field] ?? 'string';
@@ -269,7 +291,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 unset($data[$name]);
             } elseif ($val instanceof Collection) {
                 unset($data[$name]);
-            } elseif (!$isUpdate || $val !== $this->_origin[$name]) {
+            } elseif (!$isUpdate || (isset($this->_origin[$name]) && $val !== $this->_origin[$name])) {
                 // 类型转换
                 $val    = $this->writeTransform($val, $this->getFields($name));
                 $method = 'set' . Str::studly($name) . 'Attr';
@@ -297,7 +319,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         }
 
         return true;
-
     }
 
     /**
@@ -497,7 +518,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 return get_object_vars($object);
             }
         };
-        return $class->getPublicVars($this);
+
+        $data = $class->getPublicVars($this);
+        if (empty($data) && !empty($this->_data)) {
+            $data = $this->_data;
+        }
+        return $data;
     }
 
     /**
@@ -568,7 +594,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             return $this->_get[$name];
         }
 
-        $value  = $this->$name ?? null;
+        $value  = $this->getValue($name);
         $method = 'get' . Str::studly($name) . 'Attr';
         if (method_exists($this, $method)) {
             $value = $this->$method($value, $this->getData());
@@ -576,6 +602,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         $this->_get[$name] = $value;
         return $value;
+    }
+
+    public function getValue($name)
+    {
+        return $this->_define ? ($this->$name ?? null) : ($this->_data[$name] ?? null);
     }
 
     /**
@@ -612,8 +643,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function __set(string $name, $value): void
     {
-        $name              = $this->_model->getRealFieldName($name);
-        $this->_get[$name] = $value;
+        $name = $this->_model->getRealFieldName($name);
+
+        $this->_data[$name] = $value;
     }
 
     /**
@@ -626,7 +658,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     public function __isset(string $name): bool
     {
         $name = $this->_model->getRealFieldName($name);
-        return isset($this->$name) || isset($this->_get[$name]);
+        return isset($this->_data[$name]);
     }
 
     /**
@@ -639,7 +671,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     public function __unset(string $name): void
     {
         $name = $this->_model->getRealFieldName($name);
-        unset($this->_get[$name]);
+        unset($this->_data[$name]);
     }
 
     public function __toString()
