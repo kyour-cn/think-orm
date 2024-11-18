@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace think\model;
 
 use think\Collection as BaseCollection;
-use think\Model;
+use think\model\contract\Modelable as Model;
 use think\Paginator;
 
 /**
@@ -172,7 +172,7 @@ class Collection extends BaseCollection
      */
     public function setParent($parent)
     {
-        $this->each(function ($model) use ($parent) {
+        $this->each(function (Model $model) use ($parent) {
             $model->setParent($parent);
         });
 

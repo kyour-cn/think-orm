@@ -18,6 +18,7 @@ use Closure;
 use JsonSerializable;
 use think\contract\Arrayable;
 use think\contract\Jsonable;
+use think\model\contract\Modelable;
 use think\db\BaseQuery as Query;
 
 /**
@@ -37,7 +38,7 @@ use think\db\BaseQuery as Query;
  * @method static void  onBeforeRestore(Model $model) before_restore事件定义
  * @method static void  onAfterRestore(Model $model)  after_restore事件定义
  */
-abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonable
+abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonable, Modelable
 {
     use model\concern\Attribute;
     use model\concern\RelationShip;
@@ -781,7 +782,6 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
         $db = $this->db(null);
 
         $db->transaction(function () use ($data, $allowFields, $db) {
-            $this->key = null;
             $where     = $this->getWhere();
             $result    = $db->where($where)
                 ->strict(false)
