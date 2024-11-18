@@ -290,6 +290,10 @@ trait Attribute
             $data = get_object_vars($data);
         }
 
+        if (empty($data)) {
+            return $this;
+        }
+        
         // 清空数据
         $this->data = [];
 

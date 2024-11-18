@@ -283,7 +283,6 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
             }
         }
 
-        $this->parseEntity();
         // 执行初始化操作
         $this->initialize();
     }
@@ -318,16 +317,14 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
     }
 
     /**
-     * 解析模型实例名称.
+     * 获取模型类名.
      *
-     * @return void
+     * @return string
      */
-    protected function parseEntity()
+    public static function getEntityClass()
     {
-        if (!$this->entityClass) {
-            $entity            = str_replace('\\model', '\\entity', static::class);
-            $this->entityClass = class_exists($entity) ? $entity: static::class;
-        }
+        $entity = str_replace('\\model', '\\entity', static::class);
+        return class_exists($entity) ? $entity: static::class;
     }
 
     /**
@@ -339,9 +336,10 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      *
      * @return Model
      */
-    public function newInstance(array $data = [], $where = null, array $options = [])
+    public function newInstance(array $data = [], $where = null, array $options = []): Modelable
     {
-        $model = new $this->entityClass($data, $this);
+        $class = static::getEntityClass();
+        $model = new $class($data, $this);
 
         if ($this->connection) {
             $model->setConnection($this->connection);
@@ -839,11 +837,11 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
         if ($this->isAutoWriteId()) {
             $pk = $this->getPk();
             if (is_string($pk) && !isset($this->data[$pk])) {
-                $data[$pk]       = $this->autoWriteId();
+                $data[$pk] = $this->autoWriteId();
                 if ($this->entity) {
                     $this->entity->$pk = $data[$pk];
                 } else {
-                    $this->data[$pk] = $data[$pk];                    
+                    $this->data[$pk] = $data[$pk];
                 }
             }
         }
@@ -868,7 +866,7 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
                 $field = is_string($name) ? $name : $val;
                 if (!isset($data[$field])) {
                     if (is_string($name)) {
-                        $data[$field] = $val;
+                        $data[$field]       = $val;
                         $this->data[$field] = $val;
                     } else {
                         $this->setAttr($field, null);
@@ -1038,9 +1036,10 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      *
      * @return static
      */
-    public static function create(array | object $data, array $allowField = [], bool $replace = false, string $suffix = ''): Model
+    public static function create(array | object $data, array $allowField = [], bool $replace = false, string $suffix = ''): Modelable
     {
-        $model = new static();
+        $class = static::getEntityClass();
+        $model = new $class();
 
         if (!empty($allowField)) {
             $model->allowField($allowField);
@@ -1050,7 +1049,8 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
             $model->setSuffix($suffix);
         }
 
-        $model->replace($replace)->save($data);
+        $model->replace($replace);
+        $model->save($data);
 
         return $model;
     }
@@ -1065,9 +1065,10 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      *
      * @return static
      */
-    public static function update(array | object $data, $where = [], array $allowField = [], string $suffix = '')
+    public static function update(array | object $data, $where = [], array $allowField = [], string $suffix = ''): Modelable
     {
-        $model = new static();
+        $class = static::getEntityClass();
+        $model = new $class();
 
         if (!empty($allowField)) {
             $model->allowField($allowField);
@@ -1081,7 +1082,8 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
             $model->setSuffix($suffix);
         }
 
-        $model->exists(true)->save($data);
+        $model->exists(true);
+        $model->save($data);
 
         return $model;
     }
