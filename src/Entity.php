@@ -107,7 +107,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             $this->model()->exists(true);
             $this->setWeakData('origin', $origin);
 
-            if (!self::$weakMap[$this]['strict']) {
+            if (!$this->isStrictMode()) {
                 // 非严格定义模式下 采用动态属性
                 $this->setWeakData('data', $origin);
             }
@@ -132,6 +132,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     protected function getRealFieldName(string $name)
     {
         return self::$weakMap[$this]['model']->getRealFieldName($name);
+    }
+
+    protected function isStrictMode(): bool
+    {
+        return self::$weakMap[$this]['strict'];
     }
 
     /**
@@ -302,7 +307,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 关联数据写入.
+     * 关联数据写入或删除.
      *
      * @param array $relation 关联
      *
@@ -312,6 +317,34 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     {
         $this->setWeakData('together', $relation);
 
+        return $this;
+    }
+
+    /**
+     * 字段值增长
+     *
+     * @param string $field 字段名
+     * @param float  $step  增长值
+     *
+     * @return $this
+     */
+    public function inc(string $field, float $step = 1)
+    {
+        $this->set($field, $this->get($field) + $step);
+        return $this;
+    }
+
+    /**
+     * 字段值减少.
+     *
+     * @param string $field 字段名
+     * @param float  $step  增长值
+     *
+     * @return $this
+     */
+    public function dec(string $field, float $step = 1)
+    {
+        $this->set($field, $this->get($field) - $step);
         return $this;
     }
 
@@ -522,7 +555,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     protected function getData(): array
     {
-        if (self::$weakMap[$this]['strict']) {
+        if ($this->isStrictMode()) {
             $class = new class {
                 function getPublicVars($object)
                 {
@@ -592,7 +625,25 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 获取器 获取数据对象的值
+     * 设置数据对象的值
+     *
+     * @param string $name  名称
+     * @param mixed  $value 值
+     *
+     * @return void
+     */
+    public function set(string $name, $value): void
+    {
+        $name = $this->getRealFieldName($name);
+        if ($this->isStrictMode()) {
+            $this->$name = $value;
+        } else {
+            $this->setData('data', $name, $value);
+        }
+    }
+
+    /**
+     * 获取数据对象的值（使用获取器）
      *
      * @param string $name 名称
      *
@@ -615,9 +666,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         return $value;
     }
 
-    public function getValue($name)
+    public function getValue(string $name)
     {
-        return self::$weakMap[$this]['strict'] ? ($this->$name ?? null) : (self::$weakMap[$this]['data'][$name] ?? null);
+        if ($this->isStrictMode()) {
+            return $this->$name ?? null;
+        }
+        return self::$weakMap[$this]['data'][$name] ?? null;
     }
 
     /**
@@ -633,7 +687,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 获取额外属性
+     * 获取属性（非严格模式）
      *
      * @param string $name 名称
      *
@@ -645,7 +699,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 设置额外数据
+     * 设置数据（非严格模式）
      *
      * @param string $name  名称
      * @param mixed  $value 值
@@ -660,7 +714,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 检测数据对象的值
+     * 检测数据对象的值（非严格模式）
      *
      * @param string $name 名称
      *
@@ -673,7 +727,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 销毁数据对象的值
+     * 销毁数据对象的值（非严格模式）
      *
      * @param string $name 名称
      *
@@ -692,7 +746,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
     public function __debugInfo()
     {
-        if (!self::$weakMap[$this]['strict']) {
+        if (!$this->isStrictMode()) {
             return [
                 'data'   => self::$weakMap[$this]['data'],
                 'schema' => self::$weakMap[$this]['schema'],
