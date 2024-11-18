@@ -45,9 +45,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function __construct(array | object $data = [], ?Model $model = null)
     {
-        // 解析模型数据
-        $data = $this->parseData($data);
-
         // 获取对应模型对象
         if (is_null($model)) {
             $class = $this->parseModel();
@@ -69,12 +66,32 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         ];
 
         $model->setEntity($this);
-
+        // 初始化模型数据
         $this->initializeData($data);
     }
 
     /**
-     * 数据读取 类型转换.
+     * 解析模型实例名称.
+     *
+     * @return string
+     */
+    protected function parseModel(): string
+    {
+        return str_replace('\\entity', '\\model', static::class);
+    }
+
+    /**
+     * 获取模型实例.
+     *
+     * @return Model
+     */
+    public function model(): Model
+    {
+        return self::$weakMap[$this]['model'];
+    }
+
+    /**
+     * 初始化模型数据.
      *
      * @param array|object $data 实体模型数据
      *
@@ -82,6 +99,8 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     protected function initializeData(array | object $data)
     {
+        // 分析数据
+        $data = $this->parseData($data);
         // 获取字段列表
         $schema = $this->getFields();
         $fields = array_keys($schema);
@@ -227,26 +246,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
-     * 解析模型实例名称.
-     *
-     * @return string
-     */
-    protected function parseModel()
-    {
-        return str_replace('entity', 'model', static::class);
-    }
-
-    /**
-     * 获取模型实例.
-     *
-     * @return Model
-     */
-    public function model(): Model
-    {
-        return self::$weakMap[$this]['model'];
-    }
-
-    /**
      * 获取数据表字段列表.
      *
      * @return array|string
@@ -361,13 +360,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         }
 
         if (!empty($data)) {
-            $data = $this->parseData($data);
+            // 初始化模型数据
             $this->initializeData($data);
-        } else {
-            $data = $this->getData($this);
         }
 
-        $origin   = self::$weakMap[$this]['origin'];
+        $data     = $this->getData();
+        $origin   = $this->getOrigin();
         $isUpdate = $this->model()->getKey();
 
         foreach ($data as $name => &$val) {
@@ -553,7 +551,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      *
      * @return array
      */
-    protected function getData(): array
+    public function getData(): array
     {
         if ($this->isStrictMode()) {
             $class = new class {
@@ -569,6 +567,16 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         }
 
         return $data;
+    }
+
+    /**
+     * 获取原始数据.
+     *
+     * @return array
+     */
+    public function getOrigin(): array
+    {
+        return self::$weakMap[$this]['origin'];
     }
 
     /**
