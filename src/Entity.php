@@ -69,7 +69,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         ];
 
         $model->setEntity($this);
-        $model->exists(true);
 
         $this->initializeData($data);
     }
@@ -104,11 +103,14 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             }
         }
 
-        $this->setWeakData('origin', $origin);
+        if (!empty($origin)) {
+            $this->model()->exists(true);
+            $this->setWeakData('origin', $origin);
 
-        if (!self::$weakMap[$this]['strict']) {
-            // 非严格定义模式下 采用动态属性
-            $this->setWeakData('data', $origin);
+            if (!self::$weakMap[$this]['strict']) {
+                // 非严格定义模式下 采用动态属性
+                $this->setWeakData('data', $origin);
+            }
         }
     }
 
@@ -325,7 +327,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             return true;
         }
 
-        $weakMap = self::$weakMap[$this];
         if (!empty($data)) {
             $data = $this->parseData($data);
             $this->initializeData($data);
@@ -333,11 +334,8 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             $data = $this->getData($this);
         }
 
-        if (empty($data) || false === $weakMap['model']->trigger('BeforeWrite')) {
-            return false;
-        }
-
-        $isUpdate = $weakMap['model']->getKey();
+        $origin   = self::$weakMap[$this]['origin'];
+        $isUpdate = $this->model()->getKey();
 
         foreach ($data as $name => &$val) {
             if ($val instanceof Entity) {
@@ -345,7 +343,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 unset($data[$name]);
             } elseif ($val instanceof Collection) {
                 unset($data[$name]);
-            } elseif (!$isUpdate || (isset($weakMap['origin'][$name]) && $val !== $weakMap['origin'][$name])) {
+            } elseif (!$isUpdate || (isset($origin[$name]) && $val !== $origin[$name])) {
                 // 类型转换
                 $val    = $this->writeTransform($val, $this->getFields($name));
                 $method = 'set' . Str::studly($name) . 'Attr';
@@ -358,93 +356,17 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             }
         }
 
-        $result = $isUpdate ? $this->updateData($weakMap['model'], $data) : $this->insertData($weakMap['model'], $data);
+        $result = $this->model()->save($data);
 
         if (false === $result) {
             return false;
         }
-
-        // 写入回调
-        $weakMap['model']->trigger('AfterWrite');
 
         // 保存关联数据
         if (!empty($relations)) {
             $this->relationSave($relations);
         }
 
-        return true;
-    }
-
-    /**
-     * 新增数据.
-     *
-     * @param Model $model 模型对象
-     * @param array $data 数据
-     * @return bool
-     */
-    protected function insertData(Model $model, array $data): bool
-    {
-        // 主键自动写入
-        if ($model->isAutoWriteId()) {
-            $pk = $model->getPk();
-            if (is_string($pk) && !isset($data[$pk])) {
-                $data[$pk] = $model->autoWriteId();
-            }
-        }
-
-        if (empty($data) || false === $model->trigger('BeforeInsert')) {
-            return false;
-        }
-
-        // 时间字段自动写入
-        foreach ($model->getDateTimeFields() as $field) {
-            if (is_string($field)) {
-                $type = $this->getFields($field);
-                if (is_subclass_of($type, Typeable::class)) {
-                    $data[$field] = $type::from('now', $this)->value();
-                    $this->$field = $data[$field];
-                }
-            }
-        }
-
-        $fields = array_keys($this->getFields());
-        $result = $model->db()->field($fields)->insert($data, true);
-
-        $this->setKey($result);
-        $model->setKey($result);
-        $model->trigger('AfterInsert');
-        return true;
-    }
-
-    /**
-     * 更新数据.
-     *
-     * @param Model $model 模型对象
-     * @param array $data 数据
-     * @return bool
-     */
-    protected function updateData(Model $model, array $data): bool
-    {
-        if (empty($data) || false === $model->trigger('BeforeUpdate')) {
-            return false;
-        }
-
-        // 时间字段自动更新
-        $field = $model->getDateTimeFields(true);
-        if (is_string($field)) {
-            $type = $this->getFields($field);
-            if (is_subclass_of($type, Typeable::class)) {
-                $data[$field] = $type::from('now', $this)->value();
-                $this->$field = $data[$field];
-            }
-        }
-
-        $model->db(null)
-            ->where($model->getPk(), $model->getKey())
-            ->update($data);
-
-        // 更新回调
-        $model->trigger('AfterUpdate');
         return true;
     }
 
@@ -585,7 +507,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      * @param int|string $value 值
      * @return void
      */
-    protected function setKey($value)
+    public function setKey($value)
     {
         $pk = $this->model()->getPk();
         if (is_string($pk)) {
@@ -624,7 +546,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function toArray(array $allow = []): array
     {
-        $data = $this->getdata();
+        $data = $this->getData();
         foreach ($data as $name => &$item) {
             if (!empty($allow) && !in_array($name, $allow)) {
                 unset($data[$name]);
@@ -766,6 +688,20 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     public function __toString()
     {
         return $this->toJson();
+    }
+
+    public function __debugInfo()
+    {
+        if (!self::$weakMap[$this]['strict']) {
+            return [
+                'data'   => self::$weakMap[$this]['data'],
+                'schema' => self::$weakMap[$this]['schema'],
+            ];
+        } else {
+            return [
+                'schema' => self::$weakMap[$this]['schema'],
+            ];
+        }
     }
 
     // JsonSerializable
