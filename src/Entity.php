@@ -693,16 +693,33 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     {
         $data = $this->getData();
         if (empty($allow)) {
-            $hidden  = self::$weakMap[$this]['hidden'];
-            $visible = self::$weakMap[$this]['visible'];
-            $allow   = array_diff($visible ?: array_keys($data), $hidden);
+            foreach (['visible', 'hidden', 'append'] as $convert) {
+                ${$convert} = self::$weakMap[$this][$convert];
+                foreach (${$convert} as $key => $val) {
+                    if (is_string($key)) {
+                        $relation[$key][$convert] = $val;
+                        unset(${$convert}[$key]);
+                    } elseif (str_contains($val, '.')) {
+                        [$relName, $name]               = explode('.', $val);
+                        $relation[$relName][$convert][] = $name;
+                        unset(${$convert}[$key]);
+                    }
+                }
+            }
+            $allow = array_diff($visible ?: array_keys($data), $hidden);
         }
-        
+
         foreach ($data as $name => &$item) {
-            if (!empty($allow) && !in_array($name, $allow)) {
-                unset($data[$name]);
-            } elseif ($item instanceof Entity || $item instanceof Collection) {
+            if ($item instanceof Entity || $item instanceof Collection) {
+                if (!empty($relation[$name])) {
+                    // 处理关联数据输出
+                    foreach ($relation[$name] as $key => $val) {
+                        $item->$key($val);
+                    }
+                }
                 $item = $item->toarray();
+            } elseif (!empty($allow) && !in_array($name, $allow)) {
+                unset($data[$name]);
             } elseif ($item instanceof Typeable) {
                 $item = $item->value();
             } elseif (is_subclass_of($item, EnumTransform::class)) {
@@ -726,7 +743,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             }
         }
 
-        // 输出额外属性
+        // 输出额外属性 必须定义获取器
         foreach (self::$weakMap[$this]['append'] as $key) {
             $data[$key] = $this->get($key);
         }
