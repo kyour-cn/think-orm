@@ -64,6 +64,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             'origin'   => [],
             'schema'   => [],
             'together' => [],
+            'allow'    => [],
             'hidden'   => $options['hidden'] ?? [],
             'visible'  => $options['visible'] ?? [],
             'append'   => $options['append'] ?? [],
@@ -349,6 +350,20 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
+     * 允许写入字段.
+     *
+     * @param array $allow 允许字段
+     *
+     * @return $this
+     */
+    public function allow(array $allow)
+    {
+        $this->setWeakData('allow', $allow);
+
+        return $this;
+    }
+
+    /**
      * 强制写入或删除
      *
      * @param bool $force 强制更新
@@ -482,6 +497,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         $data     = $this->getData();
         $origin   = $this->getOrigin();
+        $allow    = $this->getWeakData('allow');
         $isUpdate = $this->model()->getKey() && !$this->model()->isForce();
 
         foreach ($data as $name => &$val) {
@@ -489,6 +505,8 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 $relations[$name] = $val;
                 unset($data[$name]);
             } elseif ($val instanceof Collection) {
+                unset($data[$name]);
+            } elseif (!empty($allow) && !in_array($name, $allow)) {
                 unset($data[$name]);
             } elseif ($isUpdate && ((isset($origin[$name]) && $val === $origin[$name]) || $this->model()->getPk() == $name)) {
                 unset($data[$name]);
@@ -599,13 +617,45 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      * 写入数据.
      *
      * @param array|object  $data 数据
-     *
+     * @param array  $allowField  允许字段
+     * @param bool   $replace     使用Replace
      * @return static
      */
-    public static function create(array | object $data): Entity
+    public static function create(array | object $data, array $allowField = [], bool $replace = false): Entity
     {
         $model = new static();
 
+        if (!empty($allowField)) {
+            $model->allow($allowField);
+        }
+
+        $model->replace($replace);
+        $model->save($data);
+
+        return $model;
+    }
+
+    /**
+     * 写入数据.
+     *
+     * @param array|object  $data 数据
+     * @param mixed  $where       更新条件
+     * @param array  $allowField  允许字段
+     * @return static
+     */
+    public static function update(array | object $data, $where = [], array $allowField = []): Entity
+    {
+        $model = new static();
+
+        if (!empty($allowField)) {
+            $model->allow($allowField);
+        }
+
+        if (!empty($where)) {
+            $model->setUpdateWhere($where);
+        }
+
+        $model->exists(true);
         $model->save($data);
 
         return $model;
@@ -669,10 +719,14 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     /**
      * 获取原始数据.
      *
+     * @param string|null $name 字段名
      * @return array
      */
-    public function getOrigin(): array
+    public function getOrigin(?string $name = null): array
     {
+        if ($name) {
+            return self::$weakMap[$this]['origin'][$name] ?? null;
+        }
         return self::$weakMap[$this]['origin'];
     }
 
@@ -807,7 +861,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         return $value;
     }
 
-    public function getValue(string $name)
+    private function getValue(string $name)
     {
         if ($this->isStrictMode()) {
             return $this->$name ?? null;
