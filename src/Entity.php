@@ -61,6 +61,10 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             'origin'   => [],
             'schema'   => [],
             'together' => [],
+            'hidden'   => [],
+            'visible'  => [],
+            'append'   => [],
+            'mapping'  => [],
             'strict'   => true,
             'model'    => $model,
         ];
@@ -108,6 +112,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         // 实体模型赋值
         foreach ($data as $name => $val) {
+            if (!empty(self::$weakMap[$this]['mapping'])) {
+                $key = array_search($name, self::$weakMap[$this]['mapping']);
+                if (is_string($key)) {
+                    $name = $key;
+                }
+            }
             $trueName = $this->getRealFieldName($name);
             if (in_array($trueName, $fields)) {
                 // 读取数据后进行类型转换
@@ -270,7 +280,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         $schema    = [];
 
         foreach ($propertys as $property) {
-            $name          = $weakMap['model']->getRealFieldName($property->getName());
+            $name          = $this->getRealFieldName($property->getName());
             $type          = $property->hasType() ? $property->getType()->getName() : 'string';
             $schema[$name] = $type;
         }
@@ -326,6 +336,93 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     }
 
     /**
+     * 强制写入或删除
+     *
+     * @param bool $force 强制更新
+     *
+     * @return $this
+     */
+    public function force(bool $force = true)
+    {
+        $this->model()->force($force);
+
+        return $this;
+    }
+
+    /**
+     * 新增数据是否使用Replace.
+     *
+     * @param bool $replace
+     *
+     * @return $this
+     */
+    public function replace(bool $replace = true)
+    {
+        $this->model()->replace($replace);
+
+        return $this;
+    }
+
+    /**
+     * 设置需要附加的输出属性.
+     *
+     * @param array $append 属性列表
+     * @param bool  $merge  是否合并
+     *
+     * @return $this
+     */
+    public function append(array $append, bool $merge = false)
+    {
+        self::$weakMap[$this]['append'] = $merge ? array_merge(self::$weakMap[$this]['append'], $append) : $append;
+
+        return $this;
+    }
+
+    /**
+     * 设置需要隐藏的输出属性.
+     *
+     * @param array $hidden 属性列表
+     * @param bool  $merge  是否合并
+     *
+     * @return $this
+     */
+    public function hidden(array $hidden, bool $merge = false)
+    {
+        self::$weakMap[$this]['hidden'] = $merge ? array_merge(self::$weakMap[$this]['hidden'], $hidden) : $hidden;
+
+        return $this;
+    }
+
+    /**
+     * 设置需要输出的属性.
+     *
+     * @param array $visible
+     * @param bool  $merge   是否合并
+     *
+     * @return $this
+     */
+    public function visible(array $visible, bool $merge = false)
+    {
+        self::$weakMap[$this]['visible'] = $merge ? array_merge(self::$weakMap[$this]['visible'], $visible) : $visible;
+
+        return $this;
+    }
+
+    /**
+     * 设置属性的映射输出.
+     *
+     * @param array $map
+     *
+     * @return $this
+     */
+    public function mapping(array $map)
+    {
+        self::$weakMap[$this]['mapping'] = $map;
+
+        return $this;
+    }
+
+    /**
      * 字段值增长
      *
      * @param string $field 字段名
@@ -372,7 +469,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         $data     = $this->getData();
         $origin   = $this->getOrigin();
-        $isUpdate = $this->model()->getKey();
+        $isUpdate = $this->model()->getKey() && !$this->model()->isForce();
 
         foreach ($data as $name => &$val) {
             if ($val instanceof Entity) {
@@ -505,10 +602,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      * 删除记录.
      *
      * @param mixed $data  主键列表 支持闭包查询条件
+     * @param bool  $force 是否强制删除
      *
      * @return bool
      */
-    public static function destroy($data): bool
+    public static function destroy($data, bool $force = false): bool
     {
         if (empty($data) && 0 !== $data) {
             return false;
@@ -532,7 +630,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         $resultSet = $query->select((array) $data);
 
         foreach ($resultSet as $result) {
-            $result->delete();
+            $result->force($force)->delete();
         }
 
         return true;
@@ -594,6 +692,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
     public function toArray(array $allow = []): array
     {
         $data = $this->getData();
+        if (empty($allow)) {
+            $hidden  = self::$weakMap[$this]['hidden'];
+            $visible = self::$weakMap[$this]['visible'];
+            $allow   = array_diff($visible ?: array_keys($data), $hidden);
+        }
+        
         foreach ($data as $name => &$item) {
             if (!empty($allow) && !in_array($name, $allow)) {
                 unset($data[$name]);
@@ -613,18 +717,20 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                     $this->setData('get', $name, $item);
                 }
             }
+
+            if (isset(self::$weakMap[$this]['mapping'][$name])) {
+                // 检查字段映射
+                $key        = self::$weakMap[$this]['mapping'][$name];
+                $data[$key] = $data[$name];
+                unset($data[$name]);
+            }
         }
 
         // 输出额外属性
-        foreach ($this->getWeakData('get') as $name => $val) {
-            if (!empty($allow) && !in_array($name, $allow)) {
-                continue;
-            }
-
-            if (!array_key_exists($name, $data)) {
-                $data[$name] = $val;
-            }
+        foreach (self::$weakMap[$this]['append'] as $key) {
+            $data[$key] = $this->get($key);
         }
+
         return $data;
     }
 
@@ -648,6 +754,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function set(string $name, $value): void
     {
+        if (!empty(self::$weakMap[$this]['mapping'])) {
+            $key = array_search($name, self::$weakMap[$this]['mapping']);
+            if (is_string($key)) {
+                $name = $key;
+            }
+        }
         $name = $this->getRealFieldName($name);
         if ($this->isStrictMode()) {
             $this->$name = $value;
@@ -665,6 +777,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public function get(string $name)
     {
+        if (isset(self::$weakMap[$this]['mapping'][$name])) {
+            // 检查字段映射
+            $name = self::$weakMap[$this]['mapping'][$name];
+        }
+
         $name = $this->getRealFieldName($name);
         if (array_key_exists($name, self::$weakMap[$this]['get'])) {
             return self::$weakMap[$this]['get'][$name];
@@ -763,10 +880,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         if (!$this->isStrictMode()) {
             return [
                 'data'   => self::$weakMap[$this]['data'],
+                'origin' => self::$weakMap[$this]['origin'],
                 'schema' => self::$weakMap[$this]['schema'],
             ];
         } else {
             return [
+                'origin' => self::$weakMap[$this]['origin'],
                 'schema' => self::$weakMap[$this]['schema'],
             ];
         }

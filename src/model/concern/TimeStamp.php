@@ -64,11 +64,6 @@ trait TimeStamp
         return $this;
     }
 
-    public function getDateTimeFields(bool $update = false)
-    {
-        return $update ? $this->updateTime : [$this->createTime, $this->updateTime];
-    }
-
     /**
      * 检测时间字段的实际类型.
      *
