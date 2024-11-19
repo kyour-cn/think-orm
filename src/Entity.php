@@ -59,18 +59,19 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         }
 
         self::$weakMap[$this] = [
-            'get'      => [],
-            'data'     => [],
-            'origin'   => [],
-            'schema'   => [],
-            'together' => [],
-            'allow'    => [],
-            'hidden'   => $options['hidden'] ?? [],
-            'visible'  => $options['visible'] ?? [],
-            'append'   => $options['append'] ?? [],
-            'mapping'  => $options['mapping'] ?? [],
-            'strict'   => true,
-            'model'    => $model,
+            'model'       => $model,
+            'get'         => [],
+            'data'        => [],
+            'origin'      => [],
+            'schema'      => [],
+            'together'    => [],
+            'allow'       => [],
+            'strict_mode' => true,
+            'hidden'      => $options['hidden'] ?? [],
+            'visible'     => $options['visible'] ?? [],
+            'append'      => $options['append'] ?? [],
+            'mapping'     => $options['mapping'] ?? [],
+            'strict'      => $options['strict'] ?? true,
         ];
 
         $model->setEntity($this);
@@ -133,17 +134,16 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 }
             }
             $trueName = $this->getRealFieldName($name);
+            if ($this->model()->getPk() == $trueName) {
+                // 记录主键值
+                $this->model()->setKey($val);
+            }
             if (in_array($trueName, $fields)) {
                 // 读取数据后进行类型转换
                 $value = $this->readTransform($val, $schema[$trueName] ?? 'string');
 
                 $this->$trueName   = $value;
                 $origin[$trueName] = $value;
-            }
-
-            if ($this->model()->getPk() == $trueName) {
-                // 记录主键值
-                $this->model()->setKey($val);
             }
         }
 
@@ -180,12 +180,16 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
     protected function getRealFieldName(string $name)
     {
-        return self::$weakMap[$this]['model']->getRealFieldName($name);
+        if (!self::$weakMap[$this]['strict']) {
+            return Str::camel($name);
+        }
+
+        return $name;
     }
 
     protected function isStrictMode(): bool
     {
-        return self::$weakMap[$this]['strict'];
+        return self::$weakMap[$this]['strict_mode'];
     }
 
     /**
@@ -301,7 +305,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         if (empty($schema)) {
             // 采用非严格模式
-            $this->setWeakData('strict', false);
+            $this->setWeakData('strict_mode', false);
             // 获取数据表信息
             $schema = $weakMap['model']->getFieldsType($weakMap['model']->getTable());
             $type   = $weakMap['model']->getType();
@@ -517,6 +521,18 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 // 修改器
                 if (method_exists($this, $method)) {
                     $val = $this->$method($val, $data);
+                }
+            }
+        }
+
+        if (!self::$weakMap[$this]['strict']) {
+            // 非严格模式下 自动转换为小写下划线规范
+            foreach ($data as $name => $val) {
+                // 属性名称转换
+                $trueName = Str::snake($name);
+                if ($trueName != $name) {
+                    $data[$trueName] = $val;
+                    unset($data[$name]);
                 }
             }
         }
