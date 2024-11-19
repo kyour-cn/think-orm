@@ -36,6 +36,7 @@ use WeakMap;
 abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsonable, Modelable
 {
     private static ?WeakMap $weakMap = null;
+    private static array $_schema    = [];
 
     /**
      * 架构函数.
@@ -63,7 +64,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             'get'         => [],
             'data'        => [],
             'origin'      => [],
-            'schema'      => [],
             'together'    => [],
             'allow'       => [],
             'strict_mode' => true,
@@ -182,7 +182,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      * 获取实际字段名.
      * 严格模式下 完全和数据表字段对应一致（默认）
      * 非严格模式 则采用驼峰命名规范（写入数据库时统一转换为snake规范）
-     * 
+     *
      * @param string $name  字段名
      *
      * @return mixed
@@ -300,37 +300,34 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     protected function getFields(?string $field = null)
     {
-        $weakMap = self::$weakMap[$this];
-        if (!empty($weakMap['schema'])) {
-            return $field
-            ? ($weakMap['schema'][$field] ?? 'string')
-            : $weakMap['schema'];
-        }
+        if (isset(self::$_schema[static::class])) {
+            [$schema, $strictMode] = self::$_schema[static::class];
+            $this->setWeakData('strict_mode', $strictMode);
+        } else {
+            $class     = new ReflectionClass($this);
+            $propertys = $class->getProperties(ReflectionProperty::IS_PUBLIC);
+            $schema    = [];
 
-        $class     = new ReflectionClass($this);
-        $propertys = $class->getProperties(ReflectionProperty::IS_PUBLIC);
-        $schema    = [];
-
-        foreach ($propertys as $property) {
-            $name          = $this->getRealFieldName($property->getName());
-            $type          = $property->hasType() ? $property->getType()->getName() : 'string';
-            $schema[$name] = $type;
-        }
-
-        if (empty($schema)) {
-            // 采用非严格模式
-            $this->setWeakData('strict_mode', false);
-            // 获取数据表信息
-            $fields = $weakMap['model']->getFieldsType($weakMap['model']->getTable());
-            $type   = $weakMap['model']->getType();
-            $array  = array_merge($fields, $type);
-            foreach($array as $name => $type) {
-                $name = $this->getRealFieldName($name);
+            foreach ($propertys as $property) {
+                $name          = $this->getRealFieldName($property->getName());
+                $type          = $property->hasType() ? $property->getType()->getName() : 'string';
                 $schema[$name] = $type;
             }
-        }
 
-        $this->setWeakData('schema', $schema);
+            if (empty($schema)) {
+                // 采用非严格模式
+                $this->setWeakData('strict_mode', false);
+                // 获取数据表信息
+                $fields = $this->model()->getFieldsType($this->model()->getTable());
+                $array  = array_merge($fields, $this->model()->getType());
+                foreach ($array as $name => $type) {
+                    $name          = $this->getRealFieldName($name);
+                    $schema[$name] = $type;
+                }
+            }
+
+            self::$_schema[static::class] = [$schema, $this->isStrictMode()];
+        }
 
         if ($field) {
             return $schema[$field] ?? 'string';
@@ -979,12 +976,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             return [
                 'data'   => self::$weakMap[$this]['data'],
                 'origin' => self::$weakMap[$this]['origin'],
-                'schema' => self::$weakMap[$this]['schema'],
+                'schema' => self::$_schema[static::class][0],
             ];
         } else {
             return [
                 'origin' => self::$weakMap[$this]['origin'],
-                'schema' => self::$weakMap[$this]['schema'],
+                'schema' => self::$_schema[static::class][0],
             ];
         }
     }
