@@ -51,6 +51,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             $model = new $class;
         }
 
+        // 获取实体模型参数
+        $options = $this->getOptions();
+
         if (!self::$weakMap) {
             self::$weakMap = new WeakMap;
         }
@@ -61,10 +64,10 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             'origin'   => [],
             'schema'   => [],
             'together' => [],
-            'hidden'   => [],
-            'visible'  => [],
-            'append'   => [],
-            'mapping'  => [],
+            'hidden'   => $options['hidden'] ?? [],
+            'visible'  => $options['visible'] ?? [],
+            'append'   => $options['append'] ?? [],
+            'mapping'  => $options['mapping'] ?? [],
             'strict'   => true,
             'model'    => $model,
         ];
@@ -72,6 +75,16 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         $model->setEntity($this);
         // 初始化模型数据
         $this->initializeData($data);
+    }
+
+    /**
+     * 在实体模型中定义 返回相关配置参数.
+     *
+     * @return array
+     */
+    protected function getOptions(): array
+    {
+        return [];
     }
 
     /**
@@ -608,32 +621,12 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      */
     public static function destroy($data, bool $force = false): bool
     {
-        if (empty($data) && 0 !== $data) {
-            return false;
-        }
-
         $entity = new static();
         if ($entity->isVirtual()) {
             return true;
         }
 
-        $query = $entity->model()->db();
-
-        if (is_array($data) && key($data) !== 0) {
-            $query->where($data);
-            $data = [];
-        } elseif ($data instanceof \Closure) {
-            $data($query);
-            $data = [];
-        }
-
-        $resultSet = $query->select((array) $data);
-
-        foreach ($resultSet as $result) {
-            $result->force($force)->delete();
-        }
-
-        return true;
+        return $entity->model()->destroy($data, $force);
     }
 
     /**
