@@ -391,7 +391,7 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
      *
      * @return void
      */
-    protected function setUpdateWhere($where): void
+    public function setUpdateWhere($where): void
     {
         $this->updateWhere = $where;
     }
@@ -932,9 +932,9 @@ abstract class Model implements JsonSerializable, ArrayAccess, Arrayable, Jsonab
         $pk = $this->getPk();
 
         if ($this->key) {
-            $where = [[$pk, '=', $this->key]];
+            $where = [$pk => $this->key];
         } elseif (is_string($pk) && isset($this->origin[$pk])) {
-            $where     = [[$pk, '=', $this->origin[$pk]]];
+            $where     = [$pk => $this->origin[$pk]];
             $this->key = $this->origin[$pk];
         } elseif (is_array($pk)) {
             foreach ($pk as $field) {

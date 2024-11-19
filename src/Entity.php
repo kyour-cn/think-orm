@@ -94,10 +94,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
      * 初始化模型数据.
      *
      * @param array|object $data 实体模型数据
+     * @param bool  $fromSave
      *
      * @return void
      */
-    protected function initializeData(array | object $data)
+    protected function initializeData(array | object $data, bool $fromSave = false)
     {
         // 分析数据
         $data = $this->parseData($data);
@@ -123,8 +124,13 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         }
 
         if (!empty($origin)) {
-            $this->model()->exists(true);
-            $this->setWeakData('origin', $origin);
+            if ($this->model()->getKey()) {
+                $this->model()->exists(true);
+            }
+
+            if (!$fromSave) {
+                $this->setWeakData('origin', $origin);
+            }
 
             if (!$this->isStrictMode()) {
                 // 非严格定义模式下 采用动态属性
@@ -361,7 +367,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         if (!empty($data)) {
             // 初始化模型数据
-            $this->initializeData($data);
+            $this->initializeData($data, true);
         }
 
         $data     = $this->getData();
@@ -374,7 +380,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 unset($data[$name]);
             } elseif ($val instanceof Collection) {
                 unset($data[$name]);
-            } elseif (!$isUpdate || (isset($origin[$name]) && $val !== $origin[$name])) {
+            } elseif ($isUpdate && ((isset($origin[$name]) && $val === $origin[$name]) || $this->model()->getPk() == $name)) {
+                unset($data[$name]);
+            } else {
                 // 类型转换
                 $val    = $this->writeTransform($val, $this->getFields($name));
                 $method = 'set' . Str::studly($name) . 'Attr';
@@ -382,8 +390,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 if (method_exists($this, $method)) {
                     $val = $this->$method($val, $data);
                 }
-            } else {
-                unset($data[$name]);
             }
         }
 
@@ -802,6 +808,6 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
     public function __call($method, $args)
     {
-        return call_user_func_array([self::$weakMap[$this]['model'], $method], $args);
+        return call_user_func_array([$this->model(), $method], $args);
     }
 }
