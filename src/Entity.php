@@ -178,6 +178,15 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         self::$weakMap[$this][$key][$name] = $value;
     }
 
+    /**
+     * 获取实际字段名.
+     * 严格模式下 完全和数据表字段对应一致（默认）
+     * 非严格模式 则采用驼峰命名规范（写入数据库时统一转换为snake规范）
+     * 
+     * @param string $name  字段名
+     *
+     * @return mixed
+     */
     protected function getRealFieldName(string $name)
     {
         if (!self::$weakMap[$this]['strict']) {
@@ -187,6 +196,11 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         return $name;
     }
 
+    /**
+     * 是否有严格定义数据字段.
+     *
+     * @return bool
+     */
     protected function isStrictMode(): bool
     {
         return self::$weakMap[$this]['strict_mode'];
@@ -307,9 +321,13 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             // 采用非严格模式
             $this->setWeakData('strict_mode', false);
             // 获取数据表信息
-            $schema = $weakMap['model']->getFieldsType($weakMap['model']->getTable());
+            $fields = $weakMap['model']->getFieldsType($weakMap['model']->getTable());
             $type   = $weakMap['model']->getType();
-            $schema = array_merge($schema, $type);
+            $array  = array_merge($fields, $type);
+            foreach($array as $name => $type) {
+                $name = $this->getRealFieldName($name);
+                $schema[$name] = $type;
+            }
         }
 
         $this->setWeakData('schema', $schema);
