@@ -67,6 +67,9 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
             'together'    => [],
             'allow'       => [],
             'strict_mode' => true,
+            'type'        => $options['type'] ?? [],
+            'readonly'    => $options['readonly'] ?? [],
+            'disuse'      => $options['disuse'] ?? [],
             'hidden'      => $options['hidden'] ?? [],
             'visible'     => $options['visible'] ?? [],
             'append'      => $options['append'] ?? [],
@@ -127,39 +130,39 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         // 实体模型赋值
         foreach ($data as $name => $val) {
+            if (in_array($name, self::$weakMap[$this]['disuse'])) {
+                // 废弃字段
+                continue;
+            }
+
             if (!empty(self::$weakMap[$this]['mapping'])) {
+                // 字段映射
                 $key = array_search($name, self::$weakMap[$this]['mapping']);
                 if (is_string($key)) {
                     $name = $key;
                 }
             }
+
             $trueName = $this->getRealFieldName($name);
             if ($this->model()->getPk() == $trueName) {
                 // 记录主键值
                 $this->model()->setKey($val);
+                $this->model()->exists(true);
             }
+
             if (in_array($trueName, $fields)) {
                 // 读取数据后进行类型转换
                 $value = $this->readTransform($val, $schema[$trueName] ?? 'string');
 
-                $this->$trueName   = $value;
+                // 数据赋值
+                $this->$trueName = $value;
+                // 记录原始数据
                 $origin[$trueName] = $value;
             }
         }
 
-        if (!empty($origin)) {
-            if ($this->model()->getKey()) {
-                $this->model()->exists(true);
-            }
-
-            if (!$fromSave) {
-                $this->setWeakData('origin', $origin);
-            }
-
-            if (!$this->isStrictMode()) {
-                // 非严格定义模式下 采用动态属性
-                $this->setWeakData('data', $origin);
-            }
+        if (!empty($origin) && !$fromSave) {
+            $this->setWeakData('origin', $origin);
         }
     }
 
@@ -319,7 +322,7 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
                 $this->setWeakData('strict_mode', false);
                 // 获取数据表信息
                 $fields = $this->model()->getFieldsType($this->model()->getTable());
-                $array  = array_merge($fields, $this->model()->getType());
+                $array  = array_merge($fields, self::$weakMap[$this]['type'] ?: $this->model()->getType());
                 foreach ($array as $name => $type) {
                     $name          = $this->getRealFieldName($name);
                     $schema[$name] = $type;
@@ -516,28 +519,36 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
 
         $data     = $this->getData();
         $origin   = $this->getOrigin();
-        $allow    = $this->getWeakData('allow');
+        $allow    = $this->getWeakData('allow') ?: array_keys($this->getFields());
+        $readonly = $this->getWeakData('readonly');
+        $disuse   = $this->getWeakData('disuse');
+        $allow    = array_diff($allow, $readonly, $disuse);
         $isUpdate = $this->model()->getKey() && !$this->model()->isForce();
 
         foreach ($data as $name => &$val) {
             if ($val instanceof Entity) {
                 $relations[$name] = $val;
                 unset($data[$name]);
-            } elseif ($val instanceof Collection) {
+            } elseif ($val instanceof Collection || !in_array($name, $allow)) {
+                // 禁止更新字段（包括只读、废弃和数据集）
                 unset($data[$name]);
-            } elseif (!empty($allow) && !in_array($name, $allow)) {
-                unset($data[$name]);
-            } elseif ($isUpdate && ((isset($origin[$name]) && $val === $origin[$name]) || $this->model()->getPk() == $name)) {
+            } elseif ($isUpdate && $this->isNotRequireUpdate($name, $val, $origin)) {
+                // 无需更新字段
                 unset($data[$name]);
             } else {
-                // 类型转换
-                $val    = $this->writeTransform($val, $this->getFields($name));
+                // 统一执行修改器或类型转换后写入
                 $method = 'set' . Str::studly($name) . 'Attr';
-                // 修改器
                 if (method_exists($this, $method)) {
                     $val = $this->$method($val, $data);
+                } else {
+                    // 类型转换
+                    $val = $this->writeTransform($val, $this->getFields($name));
                 }
             }
+        }
+
+        if (empty($data)) {
+            return false;
         }
 
         if (!self::$weakMap[$this]['strict']) {
@@ -564,6 +575,19 @@ abstract class Entity implements JsonSerializable, ArrayAccess, Arrayable, Jsona
         }
 
         return true;
+    }
+
+    /**
+     * 检查字段是否有更新（主键无需更新）.
+     *
+     * @param string $name 字段
+     * @param mixed $val 值
+     * @param array $origin 原始数据
+     * @return bool
+     */
+    protected function isNotRequireUpdate(string $name, $val, array $origin): bool
+    {
+        return (array_key_exists($name, $origin) && $val === $origin[$name]) || $this->model()->getPk() == $name;
     }
 
     /**
