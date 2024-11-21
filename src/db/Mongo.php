@@ -46,7 +46,7 @@ class Mongo extends BaseQuery
      *
      * @return mixed
      */
-    public function command(Command $command, string $dbName = '', ReadPreference $readPreference = null, $typeMap = null)
+    public function command(Command $command, string $dbName = '', ?ReadPreference $readPreference = null, $typeMap = null)
     {
         return $this->connection->command($command, $dbName, $readPreference, $typeMap);
     }
@@ -106,7 +106,7 @@ class Mongo extends BaseQuery
      *
      * @return int
      */
-    public function count(string $field = null): int
+    public function count(?string $field = null): int
     {
         $result = $this->cmd('count');
 
@@ -462,7 +462,7 @@ class Mongo extends BaseQuery
      *
      * @return $this
      */
-    public function limit(int $offset, int $length = null)
+    public function limit(int $offset, ?int $length = null)
     {
         if (is_null($length)) {
             $length = $offset;
@@ -590,7 +590,7 @@ class Mongo extends BaseQuery
 
         $page = isset($config['page']) ? (int) $config['page'] : Paginator::getCurrentPage($config['var_page']);
 
-        $page = $page < 1 ? 1 : $page;
+        $page = max($page, 1);
 
         $config['path'] = $config['path'] ?? Paginator::getCurrentPath();
 

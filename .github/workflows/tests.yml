@@ -12,9 +12,10 @@ jobs:
         php:
           - 8.0
           - 8.1
+          - 8.2
         experimental: [false]
         include:
-          - php: 8.2
+          - php: 8.3
             experimental: true
     services:
       mysql:
@@ -28,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -48,10 +49,10 @@ jobs:
 
       - name: Get composer cache directory
         id: composercache
-        run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache vendor
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         env:
           cache-name: composer-cache
         with:
@@ -62,7 +63,7 @@ jobs:
         run: composer install --prefer-dist --no-progress --no-suggest
 
       - name: Run test suite
-        run: composer exec -- phpunit -v
+        run: composer exec -- phpunit
         env:
           TESTS_DB_MYSQL_HOST: 127.0.0.1
           TESTS_DB_MYSQL_PORT: 3306

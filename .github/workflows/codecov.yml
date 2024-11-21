@@ -3,7 +3,7 @@ name: codecov
 on: [push, pull_request]
 
 jobs:
-  phpunit:
+  tests:
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -40,7 +40,7 @@ jobs:
         run: echo "::set-output name=dir::$(composer config cache-files-dir)"
 
       - name: Cache vendor
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         env:
           cache-name: composer-cache
         with:
@@ -60,7 +60,7 @@ jobs:
           TESTS_DB_MYSQL_DATABASE: testing
 
       - name: Codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }} #required
           file: ./coverage.xml #optional

@@ -95,6 +95,11 @@ SQL
         $expected = array_column_ex($users, ['username', 'nickname', 'type', 'id'], 'id');
         $this->assertEquals($expected, $result);
 
+        // 数组方式获取（单字段）
+        $result = Db::table('test_user')->column(['type'], 'id');
+        $expected = array_column($users, 'type', 'id');
+        $this->assertEquals($expected, $result);
+
         // 数组方式获取（重命名字段）
         $result = Db::table('test_user')->column(['username' => 'my_name', 'nickname'], 'id');
         $expected = array_column_ex($users, ['username' => 'my_name', 'nickname', 'id'], 'id');
@@ -156,13 +161,16 @@ SQL
         $result = Db::table('test_user')->whereNotIn('type', [])->column('*');
         $this->assertEquals($expected, $result);
 
+        // 合并多余空格
+        $sqlLogs = array_map(static fn ($str) => preg_replace('#\s{2,}#', ' ', $str), $sqlLogs);
+
         $this->assertEquals([
-            'SELECT * FROM `test_user` WHERE  `type` IN (1,3)',
-            'SELECT * FROM `test_user` WHERE  `type` = 1',
-            'SELECT * FROM `test_user` WHERE  `type` IN (1,0)',
-            'SELECT * FROM `test_user` WHERE  0 = 1',
-            'SELECT * FROM `test_user` WHERE  `type` NOT IN (1,3)',
-            'SELECT * FROM `test_user` WHERE  1 = 1',
+            'SELECT * FROM `test_user` WHERE `type` IN (1,3)',
+            'SELECT * FROM `test_user` WHERE `type` = 1',
+            'SELECT * FROM `test_user` WHERE `type` IN (1,0)',
+            'SELECT * FROM `test_user` WHERE 0 = 1',
+            'SELECT * FROM `test_user` WHERE `type` NOT IN (1,3)',
+            'SELECT * FROM `test_user` WHERE 1 = 1',
         ], $sqlLogs);
     }
 
